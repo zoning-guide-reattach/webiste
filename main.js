@@ -3,7 +3,28 @@ const header = document.querySelector('.site-header');
 const themeToggle = document.querySelector('[data-theme-toggle]');
 const menuToggle = document.querySelector('[data-menu-toggle]');
 const menu = document.getElementById('mobile-menu');
-let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+const backToTop = document.getElementById('back-to-top');
+
+const THEME_STORAGE_KEY = 'theme-preference';
+
+function readStoredTheme() {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === 'dark' || stored === 'light' ? stored : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function storeTheme(value) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, value);
+  } catch (e) {
+    // localStorage nicht verfügbar (z. B. eingeschränkter privater Modus) - Themewahl gilt dann nur für diese Sitzung.
+  }
+}
+
+let theme = readStoredTheme() || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 root.setAttribute('data-theme', theme);
 
 function setThemeIcon(theme) {
@@ -18,6 +39,7 @@ if (themeToggle) {
     theme = theme === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', theme);
     setThemeIcon(theme);
+    storeTheme(theme);
   });
 }
 
@@ -120,16 +142,28 @@ function updateNavigation() {
   setActiveSub(getSubAtScroll(activeMain));
 }
 
+function headerHideAllowed() {
+  // Zwischen 820px und 1119px gibt es zwar die Desktop-Nav, aber noch keine TOC-Sidebar (ab 1120px).
+  // In diesem Bereich ist die Desktop-Nav die einzige Wegfindung, daher bleibt der Header dort sichtbar.
+  const width = window.innerWidth;
+  return width < 820 || width >= 1120;
+}
+
 function updateHeaderVisibility() {
   const currentY = window.scrollY;
   const delta = currentY - lastScrollY;
   const scrollingDown = delta > 8;
   const scrollingUp = delta < -6;
 
-  if (currentY > 120 && scrollingDown) header.classList.add('header-hidden');
-  else if (scrollingUp || currentY < 40) header.classList.remove('header-hidden');
+  if (headerHideAllowed() && currentY > 120 && scrollingDown) header.classList.add('header-hidden');
+  else if (scrollingUp || currentY < 40 || !headerHideAllowed()) header.classList.remove('header-hidden');
 
   lastScrollY = currentY;
+}
+
+function updateBackToTopVisibility() {
+  if (!backToTop) return;
+  backToTop.classList.toggle('visible', window.scrollY > 480);
 }
 
 function onScroll() {
@@ -137,6 +171,7 @@ function onScroll() {
     window.requestAnimationFrame(() => {
       updateNavigation();
       updateHeaderVisibility();
+      updateBackToTopVisibility();
       ticking = false;
     });
     ticking = true;
@@ -169,26 +204,33 @@ tocSubLinks.forEach(link => {
 
 updateNavigation();
 updateHeaderVisibility();
+updateBackToTopVisibility();
 
 window.addEventListener('scroll', onScroll, { passive: true });
 window.addEventListener('resize', onScroll);
 
-// E-Mail Kontakt
-document.querySelectorAll('.show-email').forEach(button => {
-    button.addEventListener('click', function(e) {
-        e.preventDefault();
-        
-        const encoded = "a29udGFrdEBpdHMtZGl0ei5kZQ=="; 
-        const email = atob(encoded);
-        
-        // Finde den Link, der direkt neben dem geklickten Button liegt
-        const link = this.nextElementSibling; 
-        
+// E-Mail Kontakt: ein gemeinsamer Reveal-Zustand für die ganze Seite.
+// Ein Klick auf einen der Buttons (Kontaktbereich oder Footer) blendet die E-Mail an allen Stellen gleichzeitig ein,
+// statt dass jeder Button einen eigenen, unabhängigen Zustand hätte.
+const ENCODED_CONTACT_EMAIL = "a29udGFrdEBpdHMtZGl0ei5kZQ==";
+
+function revealEmailEverywhere() {
+    const email = atob(ENCODED_CONTACT_EMAIL);
+
+    document.querySelectorAll('.show-email').forEach(button => {
+        button.style.display = "none";
+    });
+
+    document.querySelectorAll('.email-link').forEach(link => {
         link.href = "mailto:" + email;
         link.textContent = email;
         link.style.display = "inline";
-        
-        // Verstecke den Button, der geklickt wurde
-        this.style.display = "none";
+    });
+}
+
+document.querySelectorAll('.show-email').forEach(button => {
+    button.addEventListener('click', function (e) {
+        e.preventDefault();
+        revealEmailEverywhere();
     });
 });
